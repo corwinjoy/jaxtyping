@@ -54,9 +54,10 @@ class _DimType(enum.Enum):
 
 
 class _NamedDim:
-    def __init__(self, name, broadcastable):
+    def __init__(self, name, broadcastable, optional):
         self.name = name
         self.broadcastable = broadcastable
+        self.optional = optional
 
 
 class _NamedVariadicDim:
@@ -178,6 +179,21 @@ class _MetaAbstractArray(type):
         else:
             return False
 
+    def _remove_optional_dims(cls, ndim):
+        # Trim dims starting from the back.
+        # Remove optional entries until len(new_dims)-1 == ndim
+        new_dims = cls.dims.copy()
+        while len(new_dims) > ndim:
+            removed = False
+            for i in range(len(new_dims) - 1, -1, -1):
+                if (type(new_dims[i]) is _NamedDim) and (new_dims[i].optional):
+                    del new_dims[i]
+                    removed = True
+                    break
+            if not removed:
+                break
+        return new_dims
+
     def _check_shape(
         cls,
         obj,
@@ -185,24 +201,29 @@ class _MetaAbstractArray(type):
         variadic_memo: Dict[str, Tuple[int, ...]],
         variadic_broadcast_memo: Dict[str, List[Tuple[int, ...]]],
     ):
+        dims = cls.dims
         if cls.index_variadic is None:
-            if obj.ndim != len(cls.dims):
-                return False
-            return _check_dims(cls.dims, obj.shape, single_memo)
+            if obj.ndim != len(dims):
+                dims = cls._remove_optional_dims(obj.ndim)
+                if obj.ndim != len(dims):
+                    return False
+            return _check_dims(dims, obj.shape, single_memo)
         else:
-            if obj.ndim < len(cls.dims) - 1:
-                return False
+            if obj.ndim < len(dims) - 1:
+                dims = cls._remove_optional_dims(obj.ndim+1)
+                if obj.ndim < len(dims) - 1:
+                    return False
             i = cls.index_variadic
-            j = -(len(cls.dims) - i - 1)
+            j = -(len(dims) - i - 1)
             if j == 0:
                 j = None
-            if not _check_dims(cls.dims[:i], obj.shape[:i], single_memo):
+            if not _check_dims(dims[:i], obj.shape[:i], single_memo):
                 return False
             if j is not None and not _check_dims(
-                cls.dims[j:], obj.shape[j:], single_memo
+                dims[j:], obj.shape[j:], single_memo
             ):
                 return False
-            variadic_dim = cls.dims[i]
+            variadic_dim = dims[i]
             if variadic_dim is _anonymous_variadic_dim:
                 return True
             else:
@@ -291,6 +312,7 @@ class _MetaAbstractDtype(type):
                 broadcastable = False
                 variadic = False
                 anonymous = False
+                optional = False
                 while True:
                     if len(elem) == 0:
                         # This branch needed as just `_` is valid
@@ -319,6 +341,14 @@ class _MetaAbstractDtype(type):
                                 "is not allowed"
                             )
                         anonymous = True
+                        elem = elem[1:]
+                    elif first_char == "?":
+                        if optional:
+                            raise ValueError(
+                                "Do not use ? twice to denote optional dimension, e.g. `??foo` "
+                                "is not allowed"
+                            )
+                        optional = True
                         elem = elem[1:]
                     else:
                         break
@@ -367,7 +397,7 @@ class _MetaAbstractDtype(type):
                     if variadic:
                         elem = _NamedVariadicDim(elem, broadcastable)
                     else:
-                        elem = _NamedDim(elem, broadcastable)
+                        elem = _NamedDim(elem, broadcastable, optional)
             else:
                 assert dim_type is _DimType.symbolic
                 if anonymous:

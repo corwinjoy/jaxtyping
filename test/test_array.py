@@ -240,6 +240,53 @@ def test_named_variadic(typecheck, getkey):
         h(b, c)
 
 
+def test_named_optional(typecheck, getkey):
+    @jaxtyped
+    @typecheck
+    def g(
+        x: Float32[Array, "*batch foo ?extra"],
+        y: Float32[Array, " *batch"],
+        z: Float32[Array, " foo ?extra"],
+    ):
+        pass
+
+    c = jr.normal(getkey(), (5,))
+
+    a1 = jr.normal(getkey(), (5,))
+    b1 = jr.normal(getkey(), ())
+    g(a1, b1, c)
+
+    a2 = jr.normal(getkey(), (3, 5))
+    b2 = jr.normal(getkey(), (3,))
+    g(a2, b2, c)
+
+    a3 = jr.normal(getkey(), (3, 5, 6))
+    b3 = jr.normal(getkey(), (3,))
+    d = jr.normal(getkey(), (5, 6))
+    g(a3, b3, d)
+
+    with pytest.raises(ParamError):
+        g(a1, b2, c)
+    with pytest.raises(ParamError):
+        g(a2, b1, c)
+    with pytest.raises(ParamError):
+        g(a3, b3, c)
+
+    @jaxtyped
+    @typecheck
+    def h(x: Float32[Array, " foo *batch"], y: Float32[Array, " foo *batch bar"]):
+        pass
+
+    a = jr.normal(getkey(), (4,))
+    b = jr.normal(getkey(), (4, 3))
+    c = jr.normal(getkey(), (3, 4))
+    h(a, b)
+    with pytest.raises(ParamError):
+        h(a, c)
+    with pytest.raises(ParamError):
+        h(b, c)
+
+
 def test_anonymous_variadic(typecheck, getkey):
     @jaxtyped
     @typecheck
