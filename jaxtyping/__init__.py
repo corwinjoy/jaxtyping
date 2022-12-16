@@ -18,20 +18,16 @@
 # CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 import typing
+import warnings
 
-
-if typing.TYPE_CHECKING:
-    # type checkers don't know which branch below will be executed
+try:
     from jax.numpy import ndarray as Array
-else:
-    if getattr(typing, "GENERATING_DOCUMENTATION", False):
-
-        class Array:
-            pass
-
-        Array.__module__ = "builtins"
-    else:
-        from jax.numpy import ndarray as Array
+except ImportError:
+    warnings.warn("Unable to import optional jax library.", ImportWarning)
+    import abc
+    class Array(abc.ABC):
+        pass
+    Array.__module__ = "builtins"
 
 from .array_types import (
     AbstractArray,
@@ -64,7 +60,11 @@ from .array_types import (
 )
 from .decorator import jaxtyped
 from .import_hook import install_import_hook
-from .pytree_type import PyTree
+
+try:
+    from .pytree_type import PyTree
+except ImportError:
+    warnings.warn("Failed to import optional PyTree class. jax library may not be installed", ImportWarning)
 
 
 __version__ = "0.2.7"
